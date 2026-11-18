@@ -1,0 +1,2 @@
+{"colour": [0, 0, 255], "label": "body", "shape": "plate", "depth": 0.5, "offset": 0.0, "taper": "none", "taper_amount": 0.0, "bevel": 1.0, "sides": 6}
+{"colour": [255, 0, 255], "label": "gem", "shape": "dome", "depth": 1.0, "offset": 0.6, "taper": "none", "taper_amount": 0.0, "bevel": 1.0, "sides": 6}

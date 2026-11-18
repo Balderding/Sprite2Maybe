@@ -413,7 +413,8 @@ static void on_line(const WCHAR *t) {
     logw(t);
     if (!wcscmp(ev, L"error")) { jstr(t, L"text", sub, 400); wcscpy(head, L"That did not work"); problems = 1; redraw(); return; }
     if (!wcscmp(ev, L"parts")) {
-        WCHAR k[24]; jstr(t, L"kind", k, 24);
+        WCHAR k[48]; jstr(t, L"kind", k, 48);
+        if (!wcsncmp(k, L"guessed as ", 11)) memmove(k, k + 11, (wcslen(k + 11) + 1) * sizeof(WCHAR));
         if (jstr(t, L"img", path, MAX_PATH)) {
             drop_img(&imParts); imParts = load_img(path);
             if (!hasParts && selMethod == 0) { parts_read(path, 1); if (saveGuess) { saveGuess = 0; parts_save(); } }
@@ -685,6 +686,7 @@ static void paint(HDC out, int W, int H) {
         if (pv) button(L"Edit parts", mx + vw - S(268), vy + vh - S(44), S(96), S(32), 2, H_PEDIT, 0);
         hit(mx + S(12), vy + S(12), vw - S(24), vh - S(64), H_VIEW, 0);
         x = mx + vw / 2;
+        if (pv && x + S(118) > mx + vw - S(276)) x = mx + S(14) + S(118);   /* keep the turn buttons clear of Edit parts */
         button(L"<", x - S(118), vy + vh - S(44), S(40), S(32), 0, H_PREV, 0); button(L">", x + S(78), vy + vh - S(44), S(40), S(32), 0, H_NEXT, 0);
         swprintf(b, 400, curView == 0 ? L"the front" : curView == NV / 2 ? L"the back" : curView == NV / 4 || curView == 3 * NV / 4 ? L"edge-on (%d)" : L"turned %d", curView * 360 / NV);
         txt(b, x - S(76), vy + vh - S(44), S(152), S(32), fUI, C_TEXT, DT_CENTER | DT_VCENTER | DT_SINGLELINE);

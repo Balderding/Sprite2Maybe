@@ -10,6 +10,30 @@ any sprite. The tool's own name inside is still `sprite3d`. Windows (the window 
 anywhere with numpy and Pillow. No game art is included. RESEARCH.md is the reading and the trials behind it; the
 `work\...` folders it names are the author's trial folders and are not in this repository.
 
+![Three weapons: the sprite, the parts it was split into, and the model from four sides](docs/images/weapons.png)
+
+![A potion, a shield and a gem: the sprite, its parts and the model](docs/images/objects.png)
+
+Each row above is one 16x16 sprite: the sprite itself, the parts it was split into (each colour one part), then the
+model from the front, turned, from the side and from below. The sword and axe parts are the tool's own guess
+(`--kind sword`, `--kind axe`); the potion and the gem were guessed with no help (a lathe and a dome). The shield and
+the mace use the hand-made parts files in `examples/parts`: the shield is a plate with its boss as a dome standing out
+of it, and the mace head is a ball.
+
+![The same six models as wireframes, with their triangle counts](docs/images/wireframe.png)
+
+Every model is a few dozen to a couple of hundred triangles; the colours come from the sprite laid on as a texture.
+
+![The window](docs/images/window.png)
+
+The window: the settings on the left, the model in the middle (drag it, or the arrows), the sprite and its parts on the
+right.
+
+The six example sprites are in `examples/` (drawn for this repository, free to use). To try one:
+
+    python sprite3d.py examples/sword.png --kind sword
+    python sprite3d.py examples/shield.png --parts examples/parts/shield_parts.png
+
 Two ways to use it:
 
 | Start | What it is |
