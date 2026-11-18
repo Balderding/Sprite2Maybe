@@ -1,5 +1,7 @@
 # Sprite2Maybe: a low-poly 3D model from a 2D pixel-art sprite
 
+![25 sprites made into low-poly 3D models, turning](docs/images/turning.gif)
+
 Takes one flat sprite (a PNG with a clear background) and makes a 3D model of it: by default a low-poly one (a sword
 is about 100 triangles, a handle 20), split into labelled parts (blade, handle, guard, gem, body...), each built as a
 simple shape (round bar, lathe, ball, blade, plate, box, dome, card) with its own depth, offset, taper and bevel. The
@@ -9,6 +11,23 @@ Status: a working tool, made for turning the 16x16 item sprites of an old dungeo
 any sprite. The tool's own name inside is still `sprite3d`. Windows (the window is plain Win32 C); the Python part runs
 anywhere with numpy and Pillow. No game art is included. RESEARCH.md is the reading and the trials behind it; the
 `work\...` folders it names are the author's trial folders and are not in this repository.
+
+## Gallery
+
+Every picture here is one of the 25 example sprites in `examples/` (16x16, drawn for this repository, free to use),
+made into a model by the tool. Each panel is the sprite, then its model turned and from the side, with the triangle
+count and the shapes it was built from.
+
+![25 sprites and their models](docs/images/gallery.png)
+
+Fifteen of them are the tool's own guess with nothing given: the potion, goblet, candle, lantern, crystal and bone came
+out as lathes, the gem, coin, scroll and apple as domes, the helmet, chest, key, mushroom and bread as plates. The
+sword, dagger, spear, axe and hammer were told only what they are (`--kind sword`, `axe` or `mace`). Five use the
+hand-made parts files in `examples/parts`: the shield (a plate with a domed boss standing out of it), the mace (its head
+a ball), the staff and the torch (a round bar with a ball on top) and the book (a plate; the guess had made it a
+barrel). Not shown: a ring, as a sprite with a see-through hole comes out filled in (the hole is not cut yet).
+
+### Close up
 
 ![Three weapons: the sprite, the parts it was split into, and the model from four sides](docs/images/weapons.png)
 
@@ -29,8 +48,9 @@ Every model is a few dozen to a couple of hundred triangles; the colours come fr
 The window: the settings on the left, the model in the middle (drag it, or the arrows), the sprite and its parts on the
 right.
 
-The six example sprites are in `examples/` (drawn for this repository, free to use). To try one:
+To try the examples:
 
+    python sprite3d.py examples/potion.png
     python sprite3d.py examples/sword.png --kind sword
     python sprite3d.py examples/shield.png --parts examples/parts/shield_parts.png
 
