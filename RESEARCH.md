@@ -384,3 +384,107 @@ closed; from the front they look almost the same as the 10,000-face models. Not 
 [ExtrudeSprite gist](https://gist.github.com/unitycoder/6985a2ab030dcff42050ea7ebed53726),
 [Meshing in a Minecraft game (0fps)](https://0fps.net/2012/06/30/meshing-in-a-minecraft-game/),
 [Distance transforms of sampled functions (Felzenszwalb, Huttenlocher)](https://cs.brown.edu/people/pfelzens/papers/dt-final.pdf)
+
+## E. A sword built like a real sword (2026-11-18, late)
+
+The user: "take a look at a real sword and other sword models to see how to make one ... do a lot of research on new
+scientific papers and old ones too". What a real one-handed sword measures, what game modellers do, what the papers
+say, and what was built from it.
+
+### E1. What a real sword measures
+
+Figures from measured originals and close replicas (Type XII and near it, the knightly one-handed sword):
+
+| Part | Measured | As a share |
+| --- | --- | --- |
+| Blade length | 74 to 82 cm | hilt to blade 1:5 to 1:7 (Johnsson's analyses) |
+| Blade width at the guard | 50 to 54 mm, narrowing to about half | |
+| Blade thickness at the guard | 4.8 to 6 mm (Albion Knight 4.8 to 4.9; general 6 to 9) | about a tenth of the width |
+| Blade thickness at the tip | 1.9 to 3 mm (Albion Knight 1.88 an inch from the tip) | 35 to 40 % of the base: the *distal taper* |
+| Grip | 108 to 114 mm long; a flattened oval (38 x 34 mm measured on a two-hander) | wider than thick |
+| Guard | 165 to 200 mm across; a bar 8 x 9 to 10 mm, 17 mm where the blade passes | three to four blade widths across; thinner than the grip |
+| Pommel | a disc 45 to 54 mm across, 26 to 29 mm thick | wider than the grip; a little over half as thick as wide |
+
+Cross-sections: lenticular (a lens, early), diamond (four flats and a ridge, later, stiffer), hollow-ground diamond,
+hexagonal; a fuller is a groove that lightens the blade. Weights of one blade in six sections: hollow ground 462 g,
+diamond with fuller 560 g, diamond 600 g, lens with fuller 671 g, lens 798 g, hexagonal 1082 g. Distal taper may be
+continuous, in steps, or only in the latter half; a replica without it handles like a bar. Peter Johnsson's work
+suggests medieval swords were laid out with circles and polygons (pommel and guard a third of the hilt, blade a
+quarter of the basic circle wide), most plainly in the 12th and 13th centuries.
+
+### E2. What game modellers do
+
+Low-poly swords in asset packs run 100 to 4,500 triangles, usually 200 to 1,500; ours are 94 to 300. Tutorials build
+the blade as a plane with one centre loop pulled out (the diamond section), the guard as a box with a centre loop and
+tapered ends, the handle a cylinder, the pommel a short cylinder or ball; triangles are fine on a rigid prop; the
+pivot sits on the grip. A faceted bevel on the blade is what makes the edge read at a low count. The Volcano sword
+generator (Pirovano, Mainetti, Loiacono 2015) describes any sword by a few curves and lengths a part (blade, guard,
+grip, pommel), which is what our parts and their settings amount to.
+
+### E3. What the papers add
+
+- **Part by part, each a simple primitive** is where the literature has landed again: 3-Sweep (2013) and its
+  automatic follow-up AutoSweep (2020) build man-made things from generalized cylinders and cuboids;
+  PrimitiveAnything (SIGGRAPH 2025) and Light-SQ (SIGGRAPH Asia 2025) learn to break a shape into primitives the way a
+  person would. Our parts picture with a shape a part is the same idea, done by hand and by rules.
+- **Symmetry as the missing information**: Reflect3D ("Symmetry Strikes Back", 2024) finds the mirror plane in one
+  picture and uses it to fix the unseen back. A sprite's back is its front mirrored, which is what we build.
+- **Inverse procedural modelling** (Garifullin et al. 2024): fit the parameters of a procedural generator to one
+  picture. A sword generator whose few numbers (blade width, taper, guard span, pommel size) are read off the sprite
+  is exactly that, with the sprite's rows as the measurement.
+- **Extreme simplification keeps the silhouette**: Low-poly Mesh Generation for Building Models (Gao et al. 2022)
+  and its follow-up for general models start from the visual hull (the silhouettes) and judge by how the result
+  looks, not by distance. We already keep the traced outline and spend no faces on colour.
+- Voxify3D (2025/26) goes the other way (a mesh into pixel-art voxels with six orthographic views and a fixed
+  palette); its lesson for us is orthographic views and palette colours only, which we have.
+
+### E4. What was built from it (lowpoly.py, regions.py, sprite3d.py)
+
+A weapon with a blade part is now built to a sword's proportions (constants at `build_regions` in lowpoly.py):
+
+| Rule | Value | Real |
+| --- | --- | --- |
+| `BLADE_THICK`: blade thickness from its own width | a quarter of the width | a tenth (doubled and more so it reads at game size) |
+| `DISTAL`: thickness at the tip against the guard end | 0.4, falling evenly along the blade | 0.35 to 0.4 |
+| `GRIP_OVAL`: grip thickness against its width | 0.75 | 0.75 to 0.9 |
+| `GUARD_OF_HANDLE`: the guard against the grip's thickness | 1.1, whatever the thickness setting | about 0.5 to 0.8 (kept thicker: it must not hide behind the grip) |
+| `POMMEL_DISC`: pommel thickness against its width | 0.6, never thinner than the grip | 0.55 |
+
+Also: the pommel is found by the guess (the rows at the foot of the grip in another colour than the grip's upper
+half, or plainly wider; `regions.pommel`) and built as a disc; the grip's thickness is taken from its usual row, not
+its widest; the blade's own colours running through the guard's top row stay blade (the guard's top was painted
+steel); a small pommel cap is 20 triangles and a guard's outline is simplified harder. The thickness setting is now
+only a ceiling for the blade. Sheets: `work\dbg010\real\cmp2.png`, `work\dbg010\real\set\set2.png`.
+
+Not built: a fuller as geometry (it is in the texture); guard arms that thin toward their ends; hexagonal or
+hollow-ground sections as a choice; a rule for axes and maces from real ones (haft oval, head a wedge).
+
+### E sources
+
+[Understanding blade properties (myArmoury)](https://myarmoury.com/feature_properties.html),
+[Sword construction and blade geometry (Arthwys)](https://www.arthwys.com/p/sword-construction-and-blade-geometry),
+[Blade geometry (Wikipedia)](https://en.wikipedia.org/wiki/Blade_geometry),
+[Oakeshott typology (Wikipedia)](https://en.wikipedia.org/wiki/Oakeshott_typology),
+[Oakeshott's typology (Albion)](https://albion-swords.com/articles/oakeshott-typology.htm),
+[Type XII swords (myArmoury)](https://myarmoury.com/feature_spotxii.html),
+[Albion Knight review (myArmoury)](https://myarmoury.com/review_alb_knight.php),
+[Albion Knight owner's measurements (SBG forum)](https://sbg-sword-forum.forums.net/thread/62922/albion-knight-sword-review),
+[The Knight (Albion)](https://albion-swords.com/product/the-knight/),
+[Castle Keep Type XII review](https://myarmoury.com/review_ck_xii.html),
+[Szczerbiec](https://en.wikipedia.org/wiki/Szczerbiec),
+[Historical Swiss swords examined (ARMA)](https://thearma.org/spotlight/swiss-swords.html),
+[The River Thames sword (myArmoury)](https://myarmoury.com/feature_thames.html),
+[Bronze Anglo-Saxon sword pommels](https://sagy.vikingove.cz/en/bronze-anglo-saxon-sword-pommels/),
+[Design and geometry (Peter Johnsson)](https://swordreflections.com/notebook/design-geometry/),
+[The Søborg sword (Peter Johnsson)](https://swordreflections.com/notes/the-soborg-sword/),
+[Low poly sword notes (lowpoly3d)](http://lowpoly3d.com/en/models/low-poly-sword),
+[Low-poly swords and daggers (StationSupply)](https://stationsupply.itch.io/low-poly-swords-and-daggers),
+[Swords pack (Pure Poly)](https://pure-poly.artstation.com/store/DkzD/swords-pack-1-300-low-poly-weapons),
+[Volcano: an interactive sword generator](https://www.semanticscholar.org/paper/Volcano:-An-interactive-sword-generator-Pirovano-Mainetti/d7e07d261efc0afb491aadd237bfc152f544af97),
+[3-Sweep in CACM](https://cacm.acm.org/research/extracting-3d-objects-from-photographs-using-3-sweep/),
+[AutoSweep](https://arxiv.org/pdf/2005.13312),
+[PrimitiveAnything](https://arxiv.org/abs/2505.04622), [Light-SQ](https://arxiv.org/pdf/2509.24986),
+[Symmetry Strikes Back (Reflect3D)](https://arxiv.org/pdf/2411.17763),
+[Single-view reconstruction by inverse procedural modelling](https://arxiv.org/pdf/2310.13373),
+[Low-poly mesh generation for building models](https://dl.acm.org/doi/fullHtml/10.1145/3528233.3530716),
+[RigMesh paper](https://www.cs.columbia.edu/cg/pdfs/198-rigmesh.pdf)

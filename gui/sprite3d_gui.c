@@ -48,7 +48,7 @@
 #define C_GOLD 0xFFE2B33Cu
 enum { SIDE_W = 300, HEAD_H = 74, FOOT_H = 58, NV = 12, MAXLOG = 200 };
 enum { H_NONE, H_OPEN, H_PARTS, H_PARTSX, H_ORIG, H_ORIGX, H_METHOD, H_KIND, H_THICK, H_SIDES, H_OUTL, H_TURN, H_GO, H_FOLDER, H_DETAILS, H_HELP, H_PREV, H_NEXT, H_VIEW,
-       H_HANDLE, H_DETAIL, H_POLY, H_PEDIT, H_PREG, H_PNEW, H_PDEL, H_PGUESS, H_PLABEL, H_PSHAPE, H_PTAPER, H_PSTEP, H_PMODE, H_CANVAS, H_BRUSH, H_BSIZE, H_PCLEAR };
+       H_HANDLE, H_DETAIL, H_POLY, H_PEDIT, H_PREG, H_PNEW, H_PDEL, H_PGUESS, H_PLABEL, H_PSHAPE, H_PTAPER, H_PSTEP, H_PMODE, H_CANVAS, H_BRUSH, H_BSIZE, H_PCLEAR, H_UPRIGHT };
 
 typedef struct { RECT r; int kind, idx; } Hit;
 static Hit hits[240]; static int nhit, hovK, hovI = -1;
@@ -73,6 +73,9 @@ static const char *HANDLEL[] = { "Coloured middle", "With outline" }, *HANDLEV[]
 static int selHandle, selDetail = 2, selPoly;
 static const char *POLYL[] = { "Few (low poly)", "Many (per pixel)" }, *POLYV[] = { "lowpoly", "pixels" };
 static const char *DETAILL[] = { "1x (pixels)", "2x", "4x", "8x" }; static const int DETAILV[] = { 1, 2, 4, 8 };
+/* a tilted sprite stood up: the tool writes out\NAME\NAME_upright.png and the window then works on that picture */
+static const char *UPL[] = { "Auto", "Off" }, *UPV[] = { "auto", "off" };
+static int selUpright, standingUp; static double stoodAngle, pendingAngle; static WCHAR fromSprite[MAX_PATH], pendingUp[MAX_PATH];
 /* drawing on the sprite: one value a sprite pixel, in the sprite file's own orientation: -1 as made (not painted),
    0 cut away, 1..255 a grey: the thickness times grey / 128. Saved as out\NAME\NAME_paint.png, given as --paint */
 static const char *BRUSHL[] = { "Thinner", "Thicker", "Cut away", "Keep", "As made" }, *BSIZEL[] = { "1", "2", "3" };
@@ -191,8 +194,8 @@ static void make(void) {
     dirty = 0; problems = 0; gotViews = 0; drawnNote[0] = 0; drop_img(&imGone); objFile[0] = 0; facts[0] = 0; partsNote[0] = 0;
     base_name(sprite, name, 120);
     swprintf(outDir, MAX_PATH, L"%ls\\out\\%ls", tool, name);
-    n = swprintf(cmd, 6800, L"\"%ls\" -u \"%ls\\sprite3d.py\" \"%ls\" --json --px 14 --out \"%ls\" --name \"%ls\" --method %hs --kind %hs --thickness %hs --sides %hs --outline %hs --turn %d --handle %hs --detail %d --mesh %hs",
-                 py, tool, sprite, outDir, name, METHODV[selMethod], KINDV[selKind], THICK[selThick], SIDESV[selSides], OUTLV[selOutl], TURNV[selTurn], HANDLEV[selHandle], DETAILV[selDetail], POLYV[selPoly]);
+    n = swprintf(cmd, 6800, L"\"%ls\" -u \"%ls\\sprite3d.py\" \"%ls\" --json --px 14 --out \"%ls\" --name \"%ls\" --method %hs --kind %hs --thickness %hs --sides %hs --outline %hs --turn %d --handle %hs --detail %d --mesh %hs --upright %hs",
+                 py, tool, sprite, outDir, name, METHODV[selMethod], KINDV[selKind], THICK[selThick], SIDESV[selSides], OUTLV[selOutl], TURNV[selTurn], HANDLEV[selHandle], DETAILV[selDetail], POLYV[selPoly], fromSprite[0] ? "off" : UPV[selUpright]);
     if (hasPaint && paintFile[0]) n += swprintf(cmd + n, 6800 - n, L" --paint \"%ls\"", paintFile);
     if (hasParts && selMethod == 0) n += swprintf(cmd + n, 6800 - n, L" --parts \"%ls\"", myParts);
     if (orig[0]) n += swprintf(cmd + n, 6800 - n, L" --original \"%ls\"", orig);
@@ -392,6 +395,8 @@ static void parts_changed(void) { parts_save(); make(); }
 
 static void set_sprite(const WCHAR *p) {
     WCHAR guess[MAX_PATH], nm[120]; int i;
+    if (!standingUp) { fromSprite[0] = 0; stoodAngle = 0; }
+    pendingUp[0] = 0;
     wcsncpy(sprite, p, MAX_PATH - 1); load_sprite_img(); paint_reset();
     if (selftest == 2 && pv) {          /* the self-test's drawing: the lower third thinner, the top row cut away */
         int x, y, top = -1;
@@ -436,6 +441,7 @@ static void on_line(const WCHAR *t) {
         swprintf(drawnNote, 200, L"%d cut away (%d of them handle outline), %d thinner, %d thicker", (int)jnum(t, L"cut") + (int)jnum(t, L"trimmed"), (int)jnum(t, L"trimmed"), (int)jnum(t, L"thinner"), (int)jnum(t, L"thicker"));
         return;
     }
+    if (!wcscmp(ev, L"upright")) { if (jstr(t, L"img", pendingUp, MAX_PATH)) pendingAngle = jnum(t, L"angle"); return; }
     if (!wcscmp(ev, L"obj")) { jstr(t, L"file", objFile, MAX_PATH); return; }
     if (!wcscmp(ev, L"view")) {
         i = ((int)(jnum(t, L"yaw") * NV / 360.0 + 0.5)) % NV;
@@ -446,6 +452,11 @@ static void on_line(const WCHAR *t) {
 static void capture(const WCHAR *path);
 static void on_ended(DWORD code) {
     busy = 0; KillTimer(hMain, 1);
+    if (pendingUp[0] && !fromSprite[0] && exists(pendingUp)) {          /* stood up: from now on the upright picture is the sprite */
+        WCHAR up[MAX_PATH]; wcscpy(up, pendingUp); wcscpy(fromSprite, sprite); stoodAngle = pendingAngle;
+        standingUp = 1; set_sprite(up); standingUp = 0; return;
+    }
+    pendingUp[0] = 0;
     if (dirty) { make(); return; }                  /* something was changed while it ran: once more, with what is set now */
     if (gotViews) {
         madeOnce = 1;
@@ -531,13 +542,13 @@ static void thumb(const WCHAR *label, const WCHAR *note, GpImage *im, int x, int
 }
 static const WCHAR *HELP[] = {
     L"What this makes", L"A 3D model (.obj with its texture) from one flat sprite. Every face keeps one sprite pixel's own colour: nothing is blended, no colour is added.",
-    L"The sprite", L"A PNG with a clear background, the object standing upright: tip up, grip down. Open it with the button or Ctrl+O, or drop the file on the window.",
+    L"The sprite", L"A PNG with a clear background, best tip up, grip down (a tilted one is stood up). Open it with the button or Ctrl+O, or drop the file on the window.",
     L"Depth: Shaped", L"By part (Sprite is: what the parts guess takes it for). A blade becomes a ridge, a shaft or grip round, an axe or mace head a plate with a bevelled edge, a guard a block, a gem a dome.",
     L"Depth: Flat / Round / Turned", L"Flat: a plate, every pixel the same thickness. Round: thicker toward the middle, like a pillow. Turned: every row a circle as wide as the row, as if made on a lathe; for bottles, candles, goblets, gems and wands.",
     L"The parts picture", L"The guess is saved as NAME_parts.png + NAME_parts.txt; a parts picture made elsewhere (its colours, and a .txt saying what each is) is opened with Parts picture.",
     L"Thickness", L"The greatest half-thickness, in sprite pixels. 1.5 gives a model about 3 pixels thick at its thickest. A blade is never more than 60% of the handle's thickness and an axe or mace head 85%, as on a real weapon.",
-    L"Outline", L"What becomes of the sprite's dark outline. Sharp: it is not drawn; it takes the colour beside it and the shape runs down to a sharp edge, so blades are sharp and handles round. Seam: kept as a thin dark rim round the model. Wrapped: it follows the shape up its sides. With Seam or Wrapped, Edge colour picks the sides' colour.",
-    L"Turn the sprite", L"Turns the sprite clockwise before the model is made, for a sprite drawn lying down or upside down: the model is built tip up, grip down. A parts picture is turned the same way.",
+    L"Outline", L"What becomes of the sprite's dark outline. Sharp: it is not drawn; it takes the colour beside it and the shape runs down to a sharp edge, so blades are sharp and handles round. Seam: kept as a thin dark rim round the model. Wrapped: it follows the shape up its sides (then Edge colour picks the sides' colour). Only with Many polygons: Few is always Sharp.",
+    L"Stand it up / Turn", L"Stand it up, Auto: a sprite drawn tilted (a sword corner to corner) is turned tip up first, 1.5x bigger in its own colours, and the window then works on that picture. Turn: clockwise, for a sprite lying down or upside down.",
     L"Handle width", L"Coloured middle: a shaft or grip is as wide as its coloured pixels, as the handle looks in the sprite; its dark outline is left off the model. With outline: as wide as colour and outline together (thicker). Only with the Sharp outline.",
     L"Polygons", L"Few (the default): each part one simple shape, a handle a six-sided prism of 20 triangles, a blade a diamond section, a head or guard a bevelled plate with a sharp edge; a whole weapon about 100 to 200 triangles. The colours come from the texture (the sprite, enlarged smooth, laid on front and back; nearest pixel). Many: a block of model for every pixel, thousands of faces; then Detail (1x to 8x) sets how fine.",
     L"Draw on it", L"Paint pixels thinner (blue) or thicker (gold), cut them away, keep them, or back to as made (right button). Saved as out\\NAME\\NAME_paint.png.",
@@ -557,16 +568,18 @@ static void paint(HDC out, int W, int H) {
     txt(L"a 3D model from a flat picture", S(16), S(44), S(SIDE_W - 32), S(18), fSmall, C_DIM, DT_LEFT | DT_SINGLELINE);
     y = S(78);
     button(sprite[0] ? L"Open another sprite..." : L"Open a sprite...", S(16), y, S(SIDE_W - 32), S(34), sprite[0] ? 0 : 1, H_OPEN, 0); y += S(38);
-    txt(sprite[0] ? leaf(sprite) : L"a PNG with a clear background; or drop one here", S(16), y, S(SIDE_W - 32), S(18), fSmall, sprite[0] ? C_ACC : C_DIM, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS); y += S(28);
+    if (fromSprite[0]) swprintf(b, 400, L"%ls, stood up %.0f\x00B0", leaf(fromSprite), stoodAngle);
+    txt(fromSprite[0] ? b : sprite[0] ? leaf(sprite) : L"a PNG with a clear background; or drop one here", S(16), y, S(SIDE_W - 32), S(18), fSmall, sprite[0] ? C_ACC : C_DIM, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS); y += S(28);
     chips(L"Depth", METHODL, 4, 4, selMethod, H_METHOD, &y);
     if (selMethod == 0) chips(L"Sprite is (for the parts guess)", KINDL, 4, 4, selKind, H_KIND, &y);
     chips(L"Thickness (sprite pixels)", THICK, 6, 6, selThick, H_THICK, &y);
-    chips(L"Outline", OUTLL, 3, 3, selOutl, H_OUTL, &y);
+    if (selPoly == 1) chips(L"Outline", OUTLL, 3, 3, selOutl, H_OUTL, &y);          /* (low poly is always Sharp) */
+    chips(L"Stand it up (a sprite drawn tilted)", UPL, 2, 2, selUpright, H_UPRIGHT, &y);
     chips(L"Turn the sprite (degrees, clockwise)", TURNL, 4, 4, selTurn, H_TURN, &y);
     chips(L"Handle width", HANDLEL, 2, 2, selHandle, H_HANDLE, &y);
     chips(L"Polygons", POLYL, 2, 2, selPoly, H_POLY, &y);
     if (selPoly == 1) chips(L"Detail (finer than the sprite's pixels)", DETAILL, 4, 4, selDetail, H_DETAIL, &y);
-    if (selOutl != 0) chips(L"Edge colour", SIDESL, 2, 2, selSides, H_SIDES, &y);          /* (with Sharp the outline takes the colour beside it anyway) */
+    if (selPoly == 1 && selOutl != 0) chips(L"Edge colour", SIDESL, 2, 2, selSides, H_SIDES, &y);          /* (with Sharp the outline takes the colour beside it anyway) */
     txt(L"Optional pictures", S(16), y, S(SIDE_W - 32), S(18), fLabel, C_DIM, DT_LEFT | DT_SINGLELINE); y += S(20);
     tw = (S(SIDE_W - 32) - S(4)) / 2;
     button(hasParts ? L"Parts: guess again" : L"Parts picture...", S(16), y, tw, S(28), 0, hasParts ? H_PARTSX : H_PARTS, 0);
@@ -744,11 +757,11 @@ static void make_fonts(void) {
 }
 /* what was chosen and where the window was: out\sprite3d_gui.ini */
 static void settings(int save) {
-    WCHAR p[MAX_PATH], v[16]; int *vals[11] = { &selMethod, &selKind, &selThick, &selSides, &selOutl, &selTurn, &selHandle, &brush, &bsize, &selDetail, &selPoly }, lim[11] = { 4, 4, 6, 2, 3, 4, 2, 5, 3, 4, 2 }, i;
-    const WCHAR *keys[11] = { L"method", L"kind", L"thickness", L"sides", L"outline", L"turn", L"handle", L"brush", L"brush_size", L"detail", L"polygons" };
+    WCHAR p[MAX_PATH], v[16]; int *vals[12] = { &selMethod, &selKind, &selThick, &selSides, &selOutl, &selTurn, &selHandle, &brush, &bsize, &selDetail, &selPoly, &selUpright }, lim[12] = { 4, 4, 6, 2, 3, 4, 2, 5, 3, 4, 2, 2 }, i;
+    const WCHAR *keys[12] = { L"method", L"kind", L"thickness", L"sides", L"outline", L"turn", L"handle", L"brush", L"brush_size", L"detail", L"polygons", L"upright" };
     if (selftest) return;
     swprintf(p, MAX_PATH, L"%ls\\out", tool); CreateDirectoryW(p, NULL); swprintf(p, MAX_PATH, L"%ls\\out\\sprite3d_gui.ini", tool);
-    for (i = 0; i < 11; i++) {
+    for (i = 0; i < 12; i++) {
         if (save) { swprintf(v, 16, L"%d", *vals[i]); WritePrivateProfileStringW(L"window", keys[i], v, p); }
         else { int x = (int)GetPrivateProfileIntW(L"window", keys[i], *vals[i], p); if (x >= 0 && x < lim[i]) *vals[i] = x; }
     }
@@ -757,7 +770,7 @@ static void settings(int save) {
         wp.length = sizeof wp; GetWindowPlacement(hMain, &wp); e[0] = &wp.rcNormalPosition.left; e[1] = &wp.rcNormalPosition.top; e[2] = &wp.rcNormalPosition.right; e[3] = &wp.rcNormalPosition.bottom;
         for (i = 0; i < 4; i++) { swprintf(v, 16, L"%ld", *e[i]); WritePrivateProfileStringW(L"window", k[i], v, p); }
         WritePrivateProfileStringW(L"window", L"maximized", wp.showCmd == SW_SHOWMAXIMIZED ? L"1" : L"0", p);
-        WritePrivateProfileStringW(L"window", L"sprite", sprite, p); WritePrivateProfileStringW(L"window", L"original", orig, p);
+        WritePrivateProfileStringW(L"window", L"sprite", fromSprite[0] ? fromSprite : sprite, p); WritePrivateProfileStringW(L"window", L"original", orig, p);
     } else {
         savedR.left = (int)GetPrivateProfileIntW(L"window", L"left", 0, p); savedR.top = (int)GetPrivateProfileIntW(L"window", L"top", 0, p);
         savedR.right = (int)GetPrivateProfileIntW(L"window", L"right", 0, p); savedR.bottom = (int)GetPrivateProfileIntW(L"window", L"bottom", 0, p);
@@ -809,6 +822,9 @@ static void click(int kind, int idx, int x) {
     case H_HANDLE: selHandle = idx; make(); break;
     case H_DETAIL: selDetail = idx; make(); break;
     case H_POLY: selPoly = idx; make(); break;
+    case H_UPRIGHT: selUpright = idx;
+        if (idx == 1 && fromSprite[0]) { WCHAR o[MAX_PATH]; wcscpy(o, fromSprite); set_sprite(o); } else make();
+        break;
     case H_PMODE: paintMode = paintMode ? 0 : 1; break;
     case H_BRUSH: brush = idx; break;
     case H_BSIZE: bsize = idx; break;

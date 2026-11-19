@@ -220,7 +220,7 @@ class Model:
         at each row, its half-thickness t_of(width); the top row a point when it is narrow"""
         rings = []
         for y, x0, x1 in rows:
-            c, t = (x0 + x1) / 2.0, t_of(x1 - x0)
+            c, t = (x0 + x1) / 2.0, t_of(x1 - x0, y)
             rings.append([self.v(x0, y, 0.0), self.v(c, y, t), self.v(x1, y, 0.0), self.v(c, y, -t)])
         y0, a0, b0 = rows[0]
         tip = (b0 - a0) <= 1.5 * self.N
@@ -354,10 +354,10 @@ def build(fa, fpart, names, N, T, method, scale=None, blade_of_handle=0.6, head_
         if len(rows) == 1: rows.append((R[0][0] + 1, R[0][1], R[0][2]))
         wmax = max(b - a for _, a, b in rows)
         tb = min(T * N, blade_of_handle * t_cap)
-        m.blade(rows, lambda wd, tb=tb, wmax=wmax: tb * max(0.35, min(1.0, wd / wmax)))
+        m.blade(rows, lambda wd, y, tb=tb, wmax=wmax: tb * max(0.35, min(1.0, wd / wmax)))
     if blade.any(): notes["blade"] = len(m.tris) - n0; n0 = len(m.tris)
     rest = op & ~hand & ~blade
-    for name, k, t, bev in (("guard", ix["guard"], min(T * N * 1.1, 1.1 * t_cap), 0.6 * N),
+    for name, k, t, bev in (("guard", ix["guard"], 1.1 * t_cap if t_cap > 0 else T * N, 0.6 * N),   # (a guard is as thick as the grip it sits on)
                             ("head", None, min(T * N, head_of_handle * t_cap), 1.5 * N)):
         mk = (rest & (fpart == k)) if k is not None else (rest & (fpart != ix["guard"]))
         for p in pieces(mk):
@@ -385,6 +385,12 @@ def bleed(fa):
 
 
 # ---------------------------------------------------------------- any sprite, in labelled parts (regions.py)
+GRIP_OVAL = 0.75        # a sword grip's thickness / its width (measured grips are flattened ovals)
+BLADE_THICK = 0.25      # a blade's thickness / its width at the guard (real: about 0.11; doubled so it reads at game size)
+DISTAL = 0.4            # a blade's thickness at the tip / at the guard (real: 5 mm down to 2 mm)
+POMMEL_DISC = 0.6       # a pommel's thickness / its width (real wheel pommels: about 0.55)
+
+
 def build_regions(fa, fregion, specs, N, T, scale=None, blade_of_handle=0.6, head_of_handle=0.85):
     """the low-poly model of an enlarged sprite in parts: fregion each fine pixel's part (an index into specs, -1
     clear), specs each part's label, shape and settings (regions.py). Each part is built by its shape, then its own
@@ -433,12 +439,20 @@ def build_regions(fa, fregion, specs, N, T, scale=None, blade_of_handle=0.6, hea
                 f = 1.0 - am * ((1.0 - t) if tp in ("up", "left") else t)
             return z * d * f + off
         return zf
+    # a weapon with a blade is built to a real sword's proportions (RESEARCH.md section E): the grip an oval, the
+    # blade's thickness from its own width and thinning toward the tip, the pommel a thick disc
+    sword = any(sp["label"] == "blade" and sp["shape"] == "blade" for sp in specs)
+    oval = GRIP_OVAL if sword else 1.0
+    def squash(zf, f):
+        return zf if f == 1.0 else (lambda fx, fy, z: zf(fx, fy, z * f))
     # the handle's radius first: blades and heads are kept thinner than it
     r_hand = 0.0
     for k, sp in enumerate(specs):
         if sp["label"] in ("handle", "grip") and sp["shape"] in ("roundbar", "lathe"):
             for p in pieces(op & (fregion == k)):
-                r_hand = max(r_hand, max(r for _, _, r in ring_rows(p, 0.35 * N)))
+                # (its usual row, not its widest: a swelling or an unmarked pommel must not thicken blade and guard)
+                r_hand = max(r_hand, float(np.median([(b - a) / 2.0 for _, a, b in rows_of(p)])))
+    r_hand *= oval                                               # (the grip's thin way)
     # parts built together: a handle and a grip (or several) with the same shape and settings are one prism, the
     # colours telling them apart; every other part on its own
     groups = {}
@@ -455,7 +469,16 @@ def build_regions(fa, fregion, specs, N, T, scale=None, blade_of_handle=0.6, hea
             m.zf = transform(sp, p)
             if shp in ("roundbar", "lathe", "ball"):
                 tol = {"roundbar": 0.35, "lathe": 0.2, "ball": 0.15}[shp] * N
-                m.prism(ring_rows(p, tol), max(3, int(sp["sides"])))
+                rr = ring_rows(p, tol)
+                sides = max(3, int(sp["sides"]))
+                if shp == "ball" and max(r for _, _, r in rr) <= 2.5 * N:          # a small ball (a pommel cap): fewer rings and sides
+                    rr = ring_rows(p, 0.3 * N); sides = min(sides, 6)
+                if key[0] == "hand" and shp == "roundbar": m.zf = squash(m.zf, oval)          # (an oval grip: wider than thick)
+                elif sword and sp["label"] == "pommel":
+                    # a disc: POMMEL_DISC of its width thick, but never thinner than the grip it ends (nor rounder than a ball)
+                    rp = max(r for _, _, r in rr)
+                    m.zf = squash(m.zf, min(1.0, max(POMMEL_DISC, 1.15 * r_hand / max(rp, 1e-9))))
+                m.prism(rr, sides)
             elif shp == "blade":
                 R = rows_of(p)
                 ys = [y + 0.5 for y, _, _ in R]
@@ -464,14 +487,23 @@ def build_regions(fa, fregion, specs, N, T, scale=None, blade_of_handle=0.6, hea
                 rows[0] = (R[0][0], rows[0][1], rows[0][2]); rows[-1] = (R[-1][0] + 1, rows[-1][1], rows[-1][2])
                 if len(rows) == 1: rows.append((R[0][0] + 1, R[0][1], R[0][2]))
                 wmax = max(b - a for _, a, b in rows)
-                tb = T * N if r_hand <= 0 else min(T * N, blade_of_handle * r_hand)
-                m.blade(rows, lambda wd, tb=tb, wmax=wmax: tb * max(0.35, min(1.0, wd / wmax)))
+                tb = min(T * N, BLADE_THICK / 2.0 * wmax)                # (from its own width, as on a real blade)
+                if r_hand > 0: tb = min(tb, blade_of_handle * r_hand)
+                # distal taper: thinnest at the tip (the narrower end), unless the part has a taper of its own
+                tip_top = (rows[0][2] - rows[0][1]) <= (rows[-1][2] - rows[-1][1])
+                ya, yb = rows[0][0], rows[-1][0]
+                def t_of(wd, y, tb=tb, wmax=wmax, own=sp["taper"] != "none"):
+                    t = tb * max(0.5, min(1.0, wd / wmax))
+                    if own: return t
+                    u = (y - ya) / max(yb - ya, 1e-9)                   # 0 at the top row, 1 at the bottom
+                    return t * (DISTAL + (1.0 - DISTAL) * (u if tip_top else 1.0 - u))
+                m.blade(rows, t_of)
             elif shp in ("plate", "box", "card"):
                 t = T * N
                 if r_hand > 0 and sp["label"] == "head": t = min(t, head_of_handle * r_hand)
-                if r_hand > 0 and sp["label"] == "guard": t = min(T * N * 1.1, 1.1 * r_hand)
+                if r_hand > 0 and sp["label"] == "guard": t = 1.1 * r_hand      # (as thick as the grip it sits on, whatever the thickness setting)
                 if shp == "card": t = 0.12 * N
-                m.plate(outline(p, 0.35 * N), t, float(sp["bevel"]) * N if shp == "plate" else 0.0)
+                m.plate(outline(p, (0.6 if sp["label"] == "guard" else 0.35) * N), t, float(sp["bevel"]) * N if shp == "plate" else 0.0)
             elif shp == "dome":
                 ys, xs = np.nonzero(p)
                 R = 0.5 * min(ys.max() - ys.min() + 1, xs.max() - xs.min() + 1)

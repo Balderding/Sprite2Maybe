@@ -95,6 +95,7 @@ def guess(a, kind, guess_parts, names):
     if kind in ("weapon", "sword", "axe", "mace"):
         part, kk = guess_parts(a, "auto" if kind == "weapon" else ("axe" if kind == "mace" else kind))
         region, specs = from_old_parts(part, names)
+        if kk == "sword": pommel(a, region, specs)
         return region, specs, kk
     sym = symmetric(op); fill = op.sum() / float(h * w); aspect = h / float(w)
     if sym >= 0.85 and aspect >= 1.15: label, shp, what = "body", "lathe", "turned object"
@@ -103,6 +104,33 @@ def guess(a, kind, guess_parts, names):
     else: label, shp, what = "body", "plate", "flat object"
     region = np.where(op, 0, -1)
     return region, [spec(label, PALETTE[0], shape=shp)], what
+
+
+def pommel(a, region, specs):
+    """a sword's pommel: the rows at the foot of the grip that are another colour than the grip (a gold or steel cap) or
+    plainly wider than it. They become a part of their own (a ball, built as a disc); at most the grip's lower 40 %"""
+    gk = next((k for k, s in enumerate(specs) if s["label"] == "grip"), None)
+    if gk is None or any(s["label"] == "pommel" for s in specs): return
+    g = region == gk
+    rows = [y for y in range(g.shape[0]) if g[y].any()]
+    if len(rows) < 4: return
+    lit = g & (a[..., :3].astype(int).sum(-1) >= 60)
+    upper = np.isin(np.arange(g.shape[0]), rows[:max(2, len(rows) // 2)])[:, None]      # (the grip proper: its upper half)
+    if not (lit & upper).any(): return
+    main = np.median(a[lit & upper][:, :3].astype(float), 0)
+    wmed = float(np.median([g[y].sum() for y in rows[:max(2, len(rows) // 2)]]))
+    take, pending = [], []
+    for y in rows[::-1][:max(1, int(len(rows) * 0.6))]:
+        l = lit[y]
+        if not l.any(): pending.append(y); continue                    # (an outline row: goes with what is above it)
+        other = np.abs(a[y][l][:, :3].astype(float) - main).sum(1).mean() > 90
+        if not (other or g[y].sum() >= wmed + 2): break
+        take += pending + [y]; pending = []
+    if not take or len(take) >= len(rows) - 1: return
+    used = {tuple(s["colour"]) for s in specs}
+    col = next(c for c in PALETTE[6:] + PALETTE if c not in used)
+    m = g & np.isin(np.arange(g.shape[0]), take)[:, None]
+    region[m] = len(specs); specs.append(spec("pommel", col))
 
 
 def whole(a, shape):

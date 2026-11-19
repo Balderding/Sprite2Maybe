@@ -7,8 +7,12 @@ is about 100 triangles, a handle 20), split into labelled parts (blade, handle, 
 simple shape (round bar, lathe, ball, blade, plate, box, dome, card) with its own depth, offset, taper and bevel. The
 sprite's own pixels are the texture: no colour is blended or added. Every model is checked closed all round.
 
-Status: a working tool, made for turning the 16x16 item sprites of an old dungeon game into 3D objects; it works on
-any sprite. The tool's own name inside is still `sprite3d`. Windows (the window is plain Win32 C); the Python part runs
+**Status: retired (November 2026). This was an experiment and it is called a failed one.** It was made for turning
+the 16x16 item sprites of an old dungeon game into 3D objects. Sprites drawn face-on (swords, bottles, candles, gems)
+come out usable; most item sprites are painted in three-quarter view and only become thick cut-outs, and that is most
+of them. The code works and is left here as it was on its last day, for anyone who wants to take something from it;
+it will not be developed further. The pictures below were made a day before the last changes (a tilted sprite stood
+up, a sword's real proportions), so today's models differ a little. The tool's own name inside is still `sprite3d`. Windows (the window is plain Win32 C); the Python part runs
 anywhere with numpy and Pillow. No game art is included. RESEARCH.md is the reading and the trials behind it; the
 `work\...` folders it names are the author's trial folders and are not in this repository.
 
@@ -68,6 +72,21 @@ Two ways to use it:
 - **slab**: every pixel the same thickness, a plate. What Minecraft does with its item pictures.
 - **round**: thicker the farther a pixel is from the outline, a pillow. The "inflation" method.
 
+## A sprite drawn tilted (`--upright`; the window: *Stand it up*)
+
+Many item sprites are drawn corner to corner (a sword leaning 45 degrees). The parts guess reads a sprite row by row,
+tip at the top and grip at the bottom, so a tilted sword came out as one huge grip. `--upright auto` (the default)
+measures the tilt (the long axis of the visible pixels, snapped to 45, 26.6 or 63.4 degrees) and, when the sprite is
+long and leans 12 to 78 degrees, stands it up first (`upright.py`): turned by cleanEdge in its own colours, drawn 1.5x
+bigger, its outline tidied to one pixel. The upright picture is saved as `NAME_upright.png` in the out folder, and
+`--parts` / `--paint` pictures are painted over that. `--upright DEG` turns by that much; `off` leaves the sprite as
+drawn. The window then works on the upright picture (the name line says "stood up 45°"); Off goes back.
+
+## Outline with Few polygons
+
+Low poly is always built with the Sharp outline: the dark outline is not part of the model. Seam and Wrapped are for
+Many polygons only. The window shows the Outline and Edge colour rows only with Many.
+
 ## A sprite drawn lying down (`--turn`)
 
 `--turn 90|180|270` (the window: *Turn the sprite*) turns the sprite clockwise by that much before the model is made,
@@ -111,7 +130,21 @@ texture.
 
 As on a real weapon, a blade is at its thickest 60% of the handle's thickness and an axe or mace head 85%
 (`BLADE_OF_HANDLE`, `HEAD_OF_HANDLE` in sprite3d.py), at every detail. The thickness setting is the most they may
-have; the handle's own roundness sets the rest. Painting a pixel thicker can still go past it.
+have; the handle's own roundness sets the rest. Painting a pixel thicker can still go past it. A guard is always 1.1
+times the grip's thickness (`GUARD_OF_HANDLE`), whatever the thickness setting, so it never hides behind the grip.
+
+## A sword's proportions (Few polygons)
+
+A weapon with a blade is built the way a real sword measures (RESEARCH.md section E; the constants are at
+`build_regions` in lowpoly.py):
+
+- the blade's thickness comes from its own width (a quarter of it; a real blade is a tenth) and thins evenly to 40%
+  at the tip, as a real blade does (5 mm at the guard, 2 mm at the tip);
+- the grip is an oval, three quarters as thick as it is wide;
+- the pommel is a part of its own: the guess takes the rows at the foot of the grip that are another colour than the
+  grip, or plainly wider, and builds them as a disc 60% as thick as wide (never thinner than the grip).
+
+A part given a taper of its own in *Edit parts* keeps that instead of the tip thinning.
 
 ## Handle width (`--handle`)
 

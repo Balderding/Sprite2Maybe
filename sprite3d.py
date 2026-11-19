@@ -20,12 +20,17 @@ Switches:
                                    by its outline)
     --thickness N                  the greatest half-thickness, in sprite pixels (1.5)
     --rim N                        the half-thickness at the outline, in sprite pixels (0.4; slab: the thickness)
-    --outline sharp|flat|wrap      the sprite's dark outline. sharp (the default): not drawn; it takes the colour beside
+    --outline sharp|flat|wrap      the sprite's dark outline (with --mesh pixels; low poly is always sharp). sharp (the default): not drawn; it takes the colour beside
                                    it and the shape runs to a sharp edge at the silhouette, with no rim. flat: kept as a
                                    thin dark flange round the edge. wrap: follows the shape up its sides (dark bands)
     --sides inner|outline          the edge faces' colour: the nearest pixel that is not black (inner), or the outline's own
     --turn 0|90|180|270            turn the sprite clockwise by that many degrees first, so a sprite drawn lying down
                                    stands tip up (0); a --parts picture is turned the same way
+    --upright auto|off|DEG         a sprite drawn tilted (a sword corner to corner) is stood tip up first: auto (the
+                                   default) measures the tilt and stands it up when it is long and leans 12 to 78
+                                   degrees; DEG turns it that many degrees clockwise; off leaves it. It is turned by
+                                   cleanEdge (its own colours) and drawn 1.5x bigger, saved as NAME_upright.png in the
+                                   out folder; --parts and --paint pictures are then painted over that picture
     --paint FILE.png               the thickness picture, drawn over the sprite (same size, turned with it): a clear
                                    pixel is as made; black cuts the pixel away; any other grey scales its thickness by
                                    grey/128 (64 half as thick, 128 as made, 255 twice); a pixel painted 120 or more
@@ -113,6 +118,15 @@ def guess_parts(a, kind="auto"):
         while g1 + 1 <= bot and width[g1 + 1] > blade_w + 1: g1 += 1
         for yy in range(top, bot + 1):
             part[yy][op[yy]] = NAMES.index("blade") if yy < g0 else NAMES.index("guard") if yy <= g1 else NAMES.index("grip")
+        # the guard's top rows where only the dark outline is wider than the blade (the blade's own colours still run
+        # down the middle): the middle stays blade, so the guard's top is not painted steel
+        lit = op & (r + g + b >= 60)
+        yy = g0
+        while yy < g1 and g0 > top:
+            bx = np.nonzero(lit[g0 - 1])[0]; lx = np.nonzero(lit[yy])[0]
+            if not len(bx) or not len(lx) or lx[0] < bx[0] or lx[-1] > bx[-1]: break
+            part[yy, bx[0]:bx[-1] + 1][op[yy, bx[0]:bx[-1] + 1]] = NAMES.index("blade")
+            yy += 1
     else:
         # the shaft's columns: the handle's own, continued up through the head
         # the shaft's columns: those of the rows just above the foot. Going up, a row is still shaft while the
@@ -305,7 +319,7 @@ def height_field(a, method, part, T, rim):
     return thinner_than_handle(H, part)
 
 
-BLADE_OF_HANDLE, HEAD_OF_HANDLE = 0.6, 0.85
+BLADE_OF_HANDLE, HEAD_OF_HANDLE, GUARD_OF_HANDLE = 0.6, 0.85, 1.1
 
 
 def thinner_than_handle(H, part):
@@ -320,6 +334,8 @@ def thinner_than_handle(H, part):
     for n, k in (("blade", BLADE_OF_HANDLE), ("head", HEAD_OF_HANDLE)):
         m = part == NAMES.index(n)
         if m.any() and H[m].max() > k * hp: H[m] *= k * hp / H[m].max()
+    m = part == NAMES.index("guard")                    # a guard is as thick as the grip it sits on (up or down), so
+    if m.any() and H[m].max() > 0: H[m] *= GUARD_OF_HANDLE * hp / H[m].max()   # it does not vanish behind the grip
     return H
 
 
@@ -643,21 +659,35 @@ def main(argv):
     mesh_kind = opt("--mesh", "lowpoly")
     try: detail = int(opt("--detail", "1"))
     except ValueError: detail = 0
+    upright_opt = opt("--upright", "auto")
+    try: upright_deg = None if upright_opt == "auto" else 0.0 if upright_opt == "off" else float(upright_opt)
+    except ValueError: upright_opt = "bad"
     try: turn = int(opt("--turn", "0")) % 360
     except ValueError: turn = -1
     views = []
     while "--view" in a: views.append(opt("--view", None, 3))
-    if len(a) != 1 or a[0].startswith("--") or method not in ("slab", "round", "shaped", "turned") or kind not in ("auto", "sword", "axe", "mace", "object") or turn not in (0, 90, 180, 270) or handle_w not in ("inner", "full") or detail not in (1, 2, 3, 4, 6, 8) or mesh_kind not in ("lowpoly", "pixels"):
+    if len(a) != 1 or a[0].startswith("--") or method not in ("slab", "round", "shaped", "turned") or kind not in ("auto", "sword", "axe", "mace", "object") or turn not in (0, 90, 180, 270) or handle_w not in ("inner", "full") or detail not in (1, 2, 3, 4, 6, 8) or mesh_kind not in ("lowpoly", "pixels") or upright_opt == "bad":
         say("error", __doc__, text="usage: sprite3d.py SPRITE.png [--method slab|round|turned|shaped] [--parts FILE] [--kind auto|sword|axe|mace] [--turn 0|90|180|270] ...")
         return 2
     src = a[0]
+    if mesh_kind == "lowpoly" and outline != "sharp":
+        say("note", "low poly: the outline is built sharp (seam and wrapped are for --mesh pixels)")
+        outline = "sharp"
     try:
-        sprite = turn_image(Image.open(src).convert("RGBA"), turn)
-        arr = np.asarray(sprite)
-        if not (arr[..., 3] > 0).any(): raise ValueError("the sprite has no pixels (all clear)")
+        sprite = Image.open(src).convert("RGBA")
+        if not (np.asarray(sprite)[..., 3] > 0).any(): raise ValueError("the sprite has no pixels (all clear)")
         name = name or os.path.splitext(os.path.basename(src))[0]
         out = out or os.path.join(os.path.dirname(os.path.abspath(src)), name + "_3d")
         os.makedirs(out, exist_ok=True)
+        # a tilted sprite stood up first (upright.py), then turned
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import upright as UP
+        sprite, stood = UP.stand_up(sprite, upright_deg)
+        if stood:
+            ufile = os.path.join(out, name + "_upright.png"); sprite.save(ufile)
+            say("upright", "stood up: turned %.1f degrees clockwise, now %dx%d (%s)" % (stood, sprite.width, sprite.height, ufile),
+                img=ufile, angle=round(stood, 1))
+        sprite = turn_image(sprite, turn)
+        arr = np.asarray(sprite)
         if method == "slab": rim = T
         elif outline == "sharp": rim = 0.0
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import regions as RG
